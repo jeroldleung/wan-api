@@ -66,7 +66,7 @@ def inference(params: VideoSynthesisRequest, task_id: str):
 
 
 @app.post("/api/v1/video-synthesis/gen", tags=["Video Synthesis"])
-async def generate_video(req: VideoSynthesisRequest, background_tasks: BackgroundTasks):
+async def submit_a_generation_task(req: VideoSynthesisRequest, background_tasks: BackgroundTasks) -> TaskStatus:
     task_id = str(uuid.uuid4())
     background_tasks.add_task(inference, params=req, task_id=task_id)
     tasks[task_id] = TaskStatus(task_id=task_id, status="PENDING")
@@ -74,7 +74,7 @@ async def generate_video(req: VideoSynthesisRequest, background_tasks: Backgroun
 
 
 @app.get("/api/v1/video-synthesis/tasks/{task_id}", tags=["Video Synthesis"])
-async def get_task_status(task_id: str):
+async def get_task_status(task_id: str) -> TaskStatus:
     if task_id not in tasks:
         raise HTTPException(status_code=404, detail="Task not found")
     return tasks[task_id]
