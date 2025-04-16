@@ -3,10 +3,11 @@ import os
 import uuid
 from typing import Dict, Literal, Optional
 
+os.environ["TQDM_DISABLE"] = "1"
+
 import torch
 import uvicorn
-from diffusers import WanPipeline
-from diffusers.utils import export_to_video
+from diffsynth import ModelManager, WanVideoPipeline, save_video
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -57,8 +58,11 @@ def inference(params: VideoSynthesisRequest, task_id: str):
             width=params.width,
             height=params.height,
             num_inference_steps=params.num_inference_steps,
-        ).frames[0]
-        export_to_video(frames, f"./temp/{task_id}.mp4", fps=params.fps)
+            # TeaCache parameters
+            tea_cache_l1_thresh=0.08,  # The larger the value, the faster the speed, the worse the visual quality.
+            tea_cache_model_id="Wan2.1-T2V-1.3B",
+        )
+        save_video(frames, f"./temp/{task_id}.mp4", fps=params.fps)
         tasks[task_id].status = "SUCCEEDED"
     except Exception as e:
         tasks[task_id].status = "FAILED"
@@ -94,11 +98,22 @@ async def get_video_result(task_id: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=50002)
-    parser.add_argument("--path", type=str, default="pretrained_models/Wan2.1-T2V-1.3B-Diffusers")
+    parser.add_argument("--path", type=str, default="pretrained_models/Wan2.1-T2V-1.3B")
     args = parser.parse_args()
 
-    pipe = WanPipeline.from_pretrained(args.path, torch_dtype=torch.bfloat16)
-    pipe.to("cuda")
-    pipe.set_progress_bar_config(disable=True)
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+    # Load models
+    model_manager = ModelManager(device="cpu")
+    model_manager.load_models(
+        [
+            f"{args.path}/diffusion_pytorch_model.safetensors",
+            f"{args.path}/models_t5_umt5-xxl-enc-bf16.pth",
+            f"{args.path}/Wan2.1_VAE.pth",
+        ],
+        torch_dtype=torch.bfloat16,  # You can set `torch_dtype=torch.float8_e4m3fn` to enable FP8 quantization.
+    )
+    pipe = WanVideoPipeline.from_model_manager(model_manager, torch_dtype=torch.bfloat16, device="cuda")
+    pipe.enable_vram_management(num_persistent_param_in_dit=None)
 
     uvicorn.run(app, host="0.0.0.0", port=args.port)
