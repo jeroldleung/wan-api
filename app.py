@@ -14,11 +14,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
-app = FastAPI(
-    title="wan-api",
-    version="0.1.0",
-    servers=[{"url": "http://10.31.28.2:50002", "description": "Development Environment"}],
-)
+app = FastAPI(title="wan-api", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
